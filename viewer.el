@@ -77,7 +77,7 @@
 ;;
 ;; If you want to open any file by `view-mode', add the following:
 ;; (viewer-aggressive-setup 'force)
-;; 
+;;
 ;; Note that the command `view-mode' should be bound in easy-to-type
 ;; key.
 ;;
@@ -211,7 +211,7 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
 ;;;; (@* "View-mode by default")
 (defcustom view-mode-by-default-regexp nil
   "*Regexp of file name to open by `view-mode'."
-  :type 'string  
+  :type 'string
   :group 'viewer)
 
 (defun view-mode-by-default-setup ()
@@ -233,7 +233,7 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
 
 (defcustom viewer-aggressive-writable t
   "*When non-nil, aggressive view-mode buffer is writable."
-  :type 'boolean  
+  :type 'boolean
   :group 'viewer)
 (defadvice find-file-noselect (after switch-to-view-file)
   (when (bufferp ad-return-value)
@@ -320,13 +320,19 @@ Stay in `view-mode' when the file is unwritable."
             viewer-modeline-color-view)
            (t
             viewer-modeline-color-default)))
-    (force-mode-line-update)))
+    ;; (force-mode-line-update)
+    ))
 
 (defmacro viewer-change-modeline-color-advice (f)
   `(defadvice ,f (after change-mode-line-color activate)
      (viewer-change-modeline-color)))
 
 (defun viewer-change-modeline-color-setup ()
+  "Setup coloring modeline.
+See also `viewer-modeline-color-unwritable' and `viewer-modeline-color-view'."
+  (add-hook 'post-command-hook 'viewer-change-modeline-color))
+
+(defun viewer-change-modeline-color-setup--old ()
   "Setup coloring modeline.
 See also `viewer-modeline-color-unwritable' and `viewer-modeline-color-view'."
   (add-hook 'window-configuration-change-hook 'viewer-change-modeline-color)
