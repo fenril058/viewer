@@ -207,6 +207,9 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
   (kill-local-variable (intern (concat (symbol-name major-mode) "-view-mode"))))
 (defadvice view-mode-disable (before viewer activate)
   (viewer-uninstall-extension))
+;;; [2014-10-22 Wed]Emacs 24.4
+(defadvice view--disable (before viewer activate)
+  (viewer-uninstall-extension))
 
 ;;;; (@* "View-mode by default")
 (defcustom view-mode-by-default-regexp nil
