@@ -4,7 +4,7 @@
 
 ;; Author: rubikitch <rubikitch@ruby-lang.org>
 ;; Keywords: view, extensions
-;; URL: http://www.emacswiki.org/cgi-bin/wiki/download/viewer.el
+;; URL: http://github.com/rubikitch/viewer/
 
 ;; This file is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
