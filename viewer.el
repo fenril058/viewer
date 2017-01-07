@@ -1,7 +1,6 @@
 ;;; viewer.el --- View-mode extension
-;; $Id: viewer.el,v 1.13 2013/03/14 23:37:05 rubikitch Exp $
 
-;; Copyright (C) 2009  rubikitch
+;; Copyright (C) 2009,2014,2016  rubikitch
 
 ;; Author: rubikitch <rubikitch@ruby-lang.org>
 ;; Keywords: view, extensions
