@@ -178,6 +178,7 @@
   (let ((mapsym (intern (concat (symbol-name mode-name) "-view-map")))
         (view-mode-sym (intern (concat (symbol-name mode-name) "-view-mode"))))
     (eval `(defvar ,mapsym nil))
+    (eval `(defvar ,view-mode-sym nil))
     (let ((map (make-sparse-keymap)))
       (loop for (key . command) in key-bindings
             do (define-key map (read-kbd-macro key) command))
