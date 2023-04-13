@@ -170,7 +170,7 @@
 
 (defvar viewer-version "$Id: viewer.el,v 1.13 2013/03/14 23:37:05 rubikitch Exp $")
 (require 'view)
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 ;;;; (@* "Overriding view-mode keymap")
 (defun define-overriding-view-mode-map-internal (mode-name key-bindings)
@@ -179,7 +179,7 @@
     (eval `(defvar ,mapsym nil))
     (eval `(defvar ,view-mode-sym nil))
     (let ((map (make-sparse-keymap)))
-      (loop for (key . command) in key-bindings
+      (cl-loop for (key . command) in key-bindings
             do (define-key map (read-kbd-macro key) command))
       (set mapsym map)
       (setq minor-mode-map-alist
@@ -262,7 +262,7 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
 When ARG is t, all new files are opened by `view-mode'.
 When ARG is 'force, enable `view-mode' even if file buffer is selected.
 When ARG is nil, uninstall it."
-  (case arg
+  (cl-case arg
     ('force
      (remove-hook 'find-file-hook 'aggressive-view-mode)
      (ad-enable-advice 'find-file-noselect 'after 'switch-to-view-file)
