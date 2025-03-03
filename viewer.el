@@ -170,7 +170,7 @@
 
 (defvar viewer-version "$Id: viewer.el,v 1.13 2013/03/14 23:37:05 rubikitch Exp $")
 (require 'view)
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 ;;;; (@* "Overriding view-mode keymap")
 (defun define-overriding-view-mode-map-internal (mode-name key-bindings)
@@ -179,7 +179,7 @@
     (eval `(defvar ,mapsym nil))
     (eval `(defvar ,view-mode-sym nil))
     (let ((map (make-sparse-keymap)))
-      (loop for (key . command) in key-bindings
+      (cl-loop for (key . command) in key-bindings
             do (define-key map (read-kbd-macro key) command))
       (set mapsym map)
       (setq minor-mode-map-alist
@@ -217,6 +217,7 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
   :type 'string
   :group 'viewer)
 
+;;;###autoload
 (defun view-mode-by-default-setup ()
   (when (and buffer-file-name view-mode-by-default-regexp
              (string-match view-mode-by-default-regexp buffer-file-name))
@@ -256,25 +257,27 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
 ;; (viewer-aggressive-setup nil)
 ;; (viewer-aggressive-setup t)
 ;; (viewer-aggressive-setup 'force)
+
+;;;###autoload
 (defun viewer-aggressive-setup (arg)
   "Setup aggressive `view-mode'.
 
 When ARG is t, all new files are opened by `view-mode'.
 When ARG is 'force, enable `view-mode' even if file buffer is selected.
 When ARG is nil, uninstall it."
-  (case arg
-    ('force
-     (remove-hook 'find-file-hook 'aggressive-view-mode)
-     (ad-enable-advice 'find-file-noselect 'after 'switch-to-view-file)
-     (ad-update 'find-file-noselect))
-    (nil
-     (remove-hook 'find-file-hook 'aggressive-view-mode)
-     (ad-disable-advice 'find-file-noselect 'after 'switch-to-view-file)
-     (ad-update 'find-file-noselect))
-    (t
-     (add-hook 'find-file-hook 'aggressive-view-mode)
-     (ad-disable-advice 'find-file-noselect 'after 'switch-to-view-file)
-     (ad-update 'find-file-noselect))))
+  (cl-case arg
+	(force
+	 (remove-hook 'find-file-hook 'aggressive-view-mode)
+	 (ad-enable-advice 'find-file-noselect 'after 'switch-to-view-file)
+	 (ad-update 'find-file-noselect))
+	((null arg)
+	 (remove-hook 'find-file-hook 'aggressive-view-mode)
+	 (ad-disable-advice 'find-file-noselect 'after 'switch-to-view-file)
+	 (ad-update 'find-file-noselect))
+	(t
+	 (add-hook 'find-file-hook 'aggressive-view-mode)
+	 (ad-disable-advice 'find-file-noselect 'after 'switch-to-view-file)
+	 (ad-update 'find-file-noselect))))
 
 ;;;; (@* "Stay in view-mode")
 (defvar view-mode-force-exit nil)
@@ -292,6 +295,7 @@ When ARG is nil, uninstall it."
   (interactive)
   (let ((view-mode-force-exit t)) (view-mode-exit)))
 
+;;;###autoload
 (defun viewer-stay-in-setup ()
   "Setup stay-in view-mode.
 Stay in `view-mode' when the file is unwritable."
@@ -330,6 +334,7 @@ Stay in `view-mode' when the file is unwritable."
   `(defadvice ,f (after change-mode-line-color activate)
      (viewer-change-modeline-color)))
 
+;;;###autoload
 (defun viewer-change-modeline-color-setup ()
   "Setup coloring modeline.
 See also `viewer-modeline-color-unwritable' and `viewer-modeline-color-view'."
