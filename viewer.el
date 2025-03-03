@@ -173,9 +173,9 @@
 (eval-when-compile (require 'cl-lib))
 
 ;;;; (@* "Overriding view-mode keymap")
-(defun define-overriding-view-mode-map-internal (mode-name key-bindings)
-  (let ((mapsym (intern (concat (symbol-name mode-name) "-view-map")))
-        (view-mode-sym (intern (concat (symbol-name mode-name) "-view-mode"))))
+(defun define-overriding-view-mode-map-internal (name key-bindings)
+  (let ((mapsym (intern (concat (symbol-name name) "-view-map")))
+        (view-mode-sym (intern (concat (symbol-name name) "-view-mode"))))
     (eval `(defvar ,mapsym nil))
     (eval `(defvar ,view-mode-sym nil))
     (let ((map (make-sparse-keymap)))
@@ -266,7 +266,7 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
   "Setup aggressive `view-mode'.
 
 When ARG is t, all new files are opened by `view-mode'.
-When ARG is 'force, enable `view-mode' even if file buffer is selected.
+When ARG is \\'force, enable `view-mode' even if file buffer is selected.
 When ARG is nil, uninstall it."
   (cl-case arg
 	(force
