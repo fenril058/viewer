@@ -187,7 +187,7 @@
                 (delete (assq view-mode-sym minor-mode-map-alist) minor-mode-map-alist)))
       nil)))
 
-(defmacro define-overriding-view-mode-map (mode-name &rest key-bindings)
+(defmacro define-overriding-view-mode-map (name &rest key-bindings)
   "Define major-mode specific view-mode keymap.
 Note that the car of an element of KEY-BINDINGS is `kbd' notation.
 
@@ -196,7 +196,7 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
    (\"C-m\" . find-function)
    (\"C-j\" . find-variable))
 "
-  `(define-overriding-view-mode-map-internal ',mode-name ',key-bindings))
+  `(define-overriding-view-mode-map-internal ',name ',key-bindings))
 
 (defun viewer-install-extension ()
   (when view-mode
