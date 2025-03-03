@@ -1,4 +1,4 @@
-;;; viewer.el --- View-mode extension
+;;; viewer.el --- View-mode extension        -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2009,2014,2016  rubikitch
 
@@ -339,23 +339,6 @@ Stay in `view-mode' when the file is unwritable."
   "Setup coloring modeline.
 See also `viewer-modeline-color-unwritable' and `viewer-modeline-color-view'."
   (add-hook 'post-command-hook 'viewer-change-modeline-color))
-
-(defun viewer-change-modeline-color-setup--old ()
-  "Setup coloring modeline.
-See also `viewer-modeline-color-unwritable' and `viewer-modeline-color-view'."
-  (add-hook 'window-configuration-change-hook 'viewer-change-modeline-color)
-  (viewer-change-modeline-color-advice toggle-read-only)
-  (viewer-change-modeline-color-advice view-mode-enable)
-  (viewer-change-modeline-color-advice view-mode-disable)
-  (viewer-change-modeline-color-advice other-window)
-  (defadvice select-window (around change-modeline-color activate)
-    (let ((curwin (selected-window))
-          (destwin (ad-get-arg 0)))
-      ad-do-it
-      (unless (or (called-interactively-p 'any) (eq curwin destwin))
-        (viewer-change-modeline-color))))
-  (viewer-change-modeline-color-advice select-frame)
-  nil)
 
 ;;;; Bug report
 (defvar viewer-maintainer-mail-address
