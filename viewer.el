@@ -203,13 +203,15 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
     (set (make-local-variable (intern (concat (symbol-name major-mode) "-view-mode")))
          t)))
 (add-hook 'view-mode-hook 'viewer-install-extension)
+
 (defun viewer-uninstall-extension ()
   (kill-local-variable (intern (concat (symbol-name major-mode) "-view-mode"))))
-(defadvice view-mode-disable (before viewer activate)
+
+(defun viewer-uninstall-extension-advice ()
   (viewer-uninstall-extension))
-;;; [2014-10-22 Wed]Emacs 24.4
-(defadvice view--disable (before viewer activate)
-  (viewer-uninstall-extension))
+
+(advice-add 'view-mode-disable :before #'viewer-uninstall-extension-advice)
+(advice-add 'view--disable :before #'viewer-uninstall-extension-advice)
 
 ;;;; (@* "View-mode by default")
 (defcustom view-mode-by-default-regexp nil
@@ -239,9 +241,10 @@ For example, to define `view-mode' keys for `emacs-lisp-mode':
   "*When non-nil, aggressive view-mode buffer is writable."
   :type 'boolean
   :group 'viewer)
-(defadvice find-file-noselect (after switch-to-view-file)
-  (when (bufferp ad-return-value)
-    (with-current-buffer ad-return-value
+
+(defun switch-to-view-file-advice (buffer &rest _args)
+  (when (bufferp buffer)
+    (with-current-buffer buffer
       (aggressive-view-mode))))
 
 (defun aggressive-view-mode ()
@@ -268,40 +271,38 @@ When ARG is nil, uninstall it."
   (cl-case arg
 	(force
 	 (remove-hook 'find-file-hook 'aggressive-view-mode)
-	 (ad-enable-advice 'find-file-noselect 'after 'switch-to-view-file)
-	 (ad-update 'find-file-noselect))
+	 (advice-add 'find-file-noselect :after #'switch-to-view-file-advice))
 	((null arg)
 	 (remove-hook 'find-file-hook 'aggressive-view-mode)
-	 (ad-disable-advice 'find-file-noselect 'after 'switch-to-view-file)
-	 (ad-update 'find-file-noselect))
+	 (advice-remove 'find-file-noselect #'switch-to-view-file-advice))
 	(t
 	 (add-hook 'find-file-hook 'aggressive-view-mode)
-	 (ad-disable-advice 'find-file-noselect 'after 'switch-to-view-file)
-	 (ad-update 'find-file-noselect))))
+	 (advice-remove 'find-file-noselect #'switch-to-view-file-advice))))
 
 ;;;; (@* "Stay in view-mode")
 (defvar view-mode-force-exit nil)
-(defmacro viewer-stay-in-unless-writable-advice (f)
-  `(defadvice ,f (around viewer-stay-in-unless-writable activate)
-     (if (or view-mode-force-exit
-             (and (boundp 'edebug-active) edebug-active)
-             (not (and view-mode
-                       (buffer-file-name)
-                       (not (file-writable-p (buffer-file-name))))))
-         ad-do-it
-       (message "File is unwritable, so stay in view-mode."))))
 
 (defun view-mode-force-exit ()
   (interactive)
   (let ((view-mode-force-exit t)) (view-mode-exit)))
 
+(defun viewer-stay-in-unless-writable (orig-fn &rest args)
+  "Prevent exiting `view-mode' if the file is unwritable."
+  (if (or view-mode-force-exit
+          (and (boundp 'edebug-active) edebug-active)
+          (not (and view-mode
+                    (buffer-file-name)
+                    (not (file-writable-p (buffer-file-name))))))
+      (apply orig-fn args)
+    (message "File is unwritable, so stay in view-mode.")))
+
 ;;;###autoload
 (defun viewer-stay-in-setup ()
   "Setup stay-in view-mode.
 Stay in `view-mode' when the file is unwritable."
-  (viewer-stay-in-unless-writable-advice view-mode)
-  (viewer-stay-in-unless-writable-advice view-mode-exit)
-  (viewer-stay-in-unless-writable-advice view-mode-disable))
+  (advice-add 'view-mode :around #'viewer-stay-in-unless-writable)
+  (advice-add 'view-mode-exit :around #'viewer-stay-in-unless-writable)
+  (advice-add 'view-mode-disable :around #'viewer-stay-in-unless-writable))
 
 ;;;; (@* "Change mode-line color")
 (defvar viewer-modeline-color-default (face-background 'mode-line))
@@ -329,10 +330,6 @@ Stay in `view-mode' when the file is unwritable."
             viewer-modeline-color-default)))
     ;; (force-mode-line-update)
     ))
-
-(defmacro viewer-change-modeline-color-advice (f)
-  `(defadvice ,f (after change-mode-line-color activate)
-     (viewer-change-modeline-color)))
 
 ;;;###autoload
 (defun viewer-change-modeline-color-setup ()
