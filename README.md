@@ -18,9 +18,39 @@ Requires Emacs 27.1 or newer.
 No additional global minor mode is introduced. Each optional setup remains
 independent.
 
-## Existing setup.el configuration
+## Configuration
 
-The original configuration continues to work:
+The `viewer-change-modeline-color-setup` and `viewer-stay-in-setup`
+functions **install** hooks/advice; they are not event handlers.
+Call each once after loading `viewer.el`. In particular, enabling
+`view-mode` does not necessarily run `read-only-mode-hook`.
+
+### Minimal initialization (when eager loading is acceptable)
+
+~~~elisp
+(require 'viewer)
+(setopt view-read-only t
+        view-mode-by-default-regexp "\\.log\\'"
+        viewer-modeline-color-view "orange"
+        viewer-modeline-color-unwritable "tomato")
+(viewer-change-modeline-color-setup)
+(viewer-stay-in-setup)
+~~~
+
+The existing `setup.el` configuration that places these two
+`*-setup` functions on `view-mode-hook` and
+`read-only-mode-hook` is still tolerated, but should **not** be used
+as the recommended setup. Repeated installation is unnecessary,
+and the read-only hook might never run for an explicitly entered
+View-mode buffer.
+
+### Lazy loading with setup.el
+
+The following example does **not** load viewer.el at startup.
+It initializes Viewer once on the first transition into View mode,
+whether explicit or via Emacs's own `view-read-only` handling.
+The small file hook ensures even the **first** `.log` file enters
+View mode, without loading viewer.el for unrelated files.
 
 ~~~elisp
 (setup (:package viewer)
@@ -34,27 +64,33 @@ The original configuration continues to work:
      "J" View-scroll-line-forward
      "K" View-scroll-line-backward
      "q" kill-buffer))
-  (setopt view-read-only t
-          viewer-modeline-color-unwritable "tomato"
-          viewer-modeline-color-view "orange"
-          view-mode-by-default-regexp "\\.log$")
-  (:with-hook view-mode-hook
-    (:hook viewer-change-modeline-color-setup))
-  (:with-hook read-only-mode-hook
-    (:hook viewer-stay-in-setup)))
+  (setopt view-read-only t)
+
+  (defun my/viewer-initialize-once ()
+    (when view-mode
+      (remove-hook 'view-mode-hook #'my/viewer-initialize-once)
+      (require 'viewer)
+      (setopt viewer-modeline-color-unwritable "tomato"
+              viewer-modeline-color-view "orange")
+      (viewer-change-modeline-color-setup)
+      (viewer-stay-in-setup)))
+  (add-hook 'view-mode-hook #'my/viewer-initialize-once)
+
+  ;; A first .log file should trigger View mode, even before Viewer is loaded.
+  (add-hook 'find-file-hook
+            (lambda ()
+              (when (and buffer-file-name
+                         (string-match-p "\\.log\\'" buffer-file-name))
+                (view-mode 1)))))
 ~~~
 
-Alternatively, if the package is already loaded during initialization,
-the setup functions may be called once directly:
-
-~~~elisp
-(require 'viewer)
-(viewer-change-modeline-color-setup)
-(viewer-stay-in-setup)
-~~~
-
-The View-mode coloring setup is idempotent, even if called from
-`view-mode-hook` as in the original configuration.
+This initial `find-file-hook` is intentionally tiny: it only
+selects the built-in minor View mode. The more general
+`view-mode-by-default-regexp` facility provided by viewer.el
+remains available when the package is loaded eagerly. Using
+that facility to process the **first** `.log` file necessarily
+requires Viewer to have been loaded already; lazy loading and
+first-file activation therefore need a small bootstrap hook.
 
 ### Mode-line coloring
 
