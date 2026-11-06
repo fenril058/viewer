@@ -1,56 +1,33 @@
 # viewer.el
 
-Viewer extends **Emacs's built-in View mode** with optional features.
-Originally written by rubikitch. This fork keeps the original setup API
-and the original behavior while updating old implementation details.
+Viewer extends Emacs's **built-in View mode**. It does not decide which
+files to open read-only or when to enable View mode.
 
-Requires Emacs 27.1 or newer.
+Originally written by rubikitch. This fork keeps the View-mode
+enhancements and Emacs 31 mode-line fix. Requires Emacs 27.1 or newer.
 
-## Features
+## Scope
 
-- Automatically use View mode for filenames matching a configurable regexp,
-  without changing the selected major mode.
-- Optionally guard against accidentally leaving View mode on unwritable files.
-- Optionally highlight the active mode line of View-mode buffers.
-- Optionally use View mode aggressively for large files.
-- Optionally define major-mode-specific keymaps in View mode.
+Viewer provides:
 
-No additional global minor mode is introduced. Each optional setup remains
-independent.
+- Buffer-local active mode-line colors for View mode (orange; tomato for
+  non-writable files).
+- Optional protection against accidentally leaving View mode in
+  non-writable files, plus `view-mode-force-exit`.
+- Major-mode-specific key bindings while View mode is active.
 
-## Configuration
+Viewer **does not** inspect filenames or file sizes to decide when to
+enable View mode. As a consequence, it installs no `find-file-hook` and
+no `find-file-noselect` advice.
 
-The `viewer-change-modeline-color-setup` and `viewer-stay-in-setup`
-functions **install** hooks/advice; they are not event handlers.
-Call each once after loading `viewer.el`. In particular, enabling
-`view-mode` does not necessarily run `read-only-mode-hook`.
+The existing color and protection setup functions are kept for people
+who want to configure those features independently.
 
-### Minimal initialization (when eager loading is acceptable)
+## Lazy configuration
 
-~~~elisp
-(require 'viewer)
-(setopt view-read-only t
-        view-mode-by-default-regexp "\\.log\\'"
-        viewer-modeline-color-view "orange"
-        viewer-modeline-color-unwritable "tomato")
-(viewer-change-modeline-color-setup)
-(viewer-stay-in-setup)
-~~~
-
-The existing `setup.el` configuration that places these two
-`*-setup` functions on `view-mode-hook` and
-`read-only-mode-hook` is still tolerated, but should **not** be used
-as the recommended setup. Repeated installation is unnecessary,
-and the read-only hook might never run for an explicitly entered
-View-mode buffer.
-
-### Lazy loading with setup.el
-
-The following example does **not** load viewer.el at startup.
-It initializes Viewer once on the first transition into View mode,
-whether explicit or via Emacs's own `view-read-only` handling.
-The small file hook ensures even the **first** `.log` file enters
-View mode, without loading viewer.el for unrelated files.
+A single hook entry is enough when your package manager has installed
+Viewer's generated autoloads (the `;;;###autoload` cookie is attached
+to `viewer-setup`):
 
 ~~~elisp
 (setup (:package viewer)
@@ -65,94 +42,94 @@ View mode, without loading viewer.el for unrelated files.
      "K" View-scroll-line-backward
      "q" kill-buffer))
   (setopt view-read-only t)
-
-  (defun my/viewer-initialize-once ()
-    (when view-mode
-      (remove-hook 'view-mode-hook #'my/viewer-initialize-once)
-      (require 'viewer)
-      (setopt viewer-modeline-color-unwritable "tomato"
-              viewer-modeline-color-view "orange")
-      (viewer-change-modeline-color-setup)
-      (viewer-stay-in-setup)))
-  (add-hook 'view-mode-hook #'my/viewer-initialize-once)
-
-  ;; A first .log file should trigger View mode, even before Viewer is loaded.
-  (add-hook 'find-file-hook
-            (lambda ()
-              (when (and buffer-file-name
-                         (string-match-p "\\.log\\'" buffer-file-name))
-                (view-mode 1)))))
+  (add-hook 'view-mode-hook #'viewer-setup))
 ~~~
 
-This initial `find-file-hook` is intentionally tiny: it only
-selects the built-in minor View mode. The more general
-`view-mode-by-default-regexp` facility provided by viewer.el
-remains available when the package is loaded eagerly. Using
-that facility to process the **first** `.log` file necessarily
-requires Viewer to have been loaded already; lazy loading and
-first-file activation therefore need a small bootstrap hook.
-
-### Mode-line coloring
-
-On Emacs 29+ the active window uses the `mode-line-active` face,
-which can override the `mode-line` face's background. The old Viewer
-implementation changed the global `mode-line` background and could
-therefore fail to show the requested color on newer Emacs.
-
-Viewer now uses `face-remap-add-relative` on the **active mode line of
-each buffer**. Inactive windows and unrelated buffers are not changed,
-and leaving View mode restores the current theme. The original
-`viewer-modeline-color-view` and
-`viewer-modeline-color-unwritable` customizations still work.
-
-While View mode is active, coloring is refreshed through a *buffer-local*
-post-command hook, including when a file becomes unwritable externally.
-No global per-command color hook is installed. You can disable coloring
-with:
+If your installation does **not** generate/load autoloads, register
+this manually before the hook:
 
 ~~~elisp
-(viewer-change-modeline-color-teardown)
+(autoload 'viewer-setup "viewer")
+(add-hook 'view-mode-hook #'viewer-setup)
 ~~~
 
-### Unwritable-file protection
+Viewer is not loaded at startup. On the first View-mode transition,
+`viewer-setup` loads Viewer, installs color/protection hooks and advice
+**once**, and immediately updates the current buffer. Subsequent
+View-mode toggles only run the normal lifecycle hooks.
 
-Call `viewer-stay-in-setup` to retain View mode on unwritable files.
-The command `view-mode-force-exit` still allows explicitly leaving it.
+There is no user-defined initializer and no global Viewer minor mode.
 
-Remove that protection with:
+### Selective setup
+
+If you want only certain features rather than the combined
+`viewer-setup`, load Viewer explicitly and call only the needed
+setup functions **once**:
 
 ~~~elisp
-(viewer-stay-in-teardown)
+(require 'viewer)
+(viewer-change-modeline-color-setup)
+;; Optional:
+(viewer-stay-in-setup)
 ~~~
 
-### Automatic files and aggressive mode
+Color setup and unwritable-file protection remain independently
+reversible via `viewer-change-modeline-color-teardown` and
+`viewer-stay-in-teardown`.
 
-The filename regexp feature retains the original small
-`find-file-hook`, because it must preserve the selected major mode.
-`auto-mode-alist` is for major-mode selection and is not an equivalent
-replacement for enabling the View minor mode.
+### Opening .log files read-only (your init.el, not Viewer)
 
-Aggressive View mode stays opt-in:
+For example:
 
 ~~~elisp
-(viewer-aggressive-setup t)
-(viewer-aggressive-setup 'force)
-(viewer-aggressive-setup nil)
+(setopt view-read-only t)
+(add-hook 'find-file-hook
+          (lambda ()
+            (when (and buffer-file-name
+                       (string-match-p "\\.log\\'" buffer-file-name))
+              (read-only-mode 1))))
 ~~~
 
-### Major-mode-specific View keys
+This is a **user policy**, not a Viewer feature.
+Emacs's standard `view-read-only` integration enters built-in View mode
+when `read-only-mode` enables read-only status. That transition calls
+`view-mode-hook` and can autoload Viewer using the setup above.
 
-~~~elisp
-(define-overriding-view-mode-map emacs-lisp-mode
-  ("C-m" . find-function)
-  ("C-j" . find-variable))
-~~~
+Read-only buffers and files that are not writable on disk are not the
+same thing. A writable `.log` deliberately opened read-only will have
+the **orange** View mode line, not the tomato unwritable-file line.
+The unwritable-file exit protection likewise checks file permissions.
+
+## Mode-line colors
+
+Emacs 29+ can use `mode-line-active` for the selected window, so the
+old global `mode-line` background change did not reliably display
+Viewer's color on Emacs 31. Viewer now uses buffer-local
+`face-remap-add-relative`, and restores theme colors on exit.
+Colors can be customized via `viewer-modeline-color-view` and
+`viewer-modeline-color-unwritable`.
+
+Color refresh uses a buffer-local `post-command-hook` only while View
+mode is active, including permission changes that happen externally.
+
+## Breaking changes
+
+Filename- and size-based View activation are removed from Viewer:
+
+- `view-mode-by-default-regexp` and `view-mode-by-default-setup`
+- `viewer-aggressive-setup` and `aggressive-view-mode`
+- `viewer-aggressive-minimum-size` and `viewer-aggressive-writable`
+
+A package-level `find-file-hook` and `find-file-noselect` advice are
+no longer installed. Put file-selection/read-only rules in init.el or
+a dedicated package instead.
 
 ## Tests
 
 ~~~shell
 emacs -Q --batch -L . -f batch-byte-compile viewer.el
 emacs -Q --batch -L . -l test/viewer-test.el -f ert-run-tests-batch-and-exit
+emacs -Q --batch -L . -l test/viewer-autoload-test.el -f ert-run-tests-batch-and-exit
 ~~~
 
-The GitHub Actions workflow runs the tests on Emacs 27.2, 29.4 and 31.1.
+GitHub Actions runs these against Emacs 27.2, 29.4, and 31.1.
