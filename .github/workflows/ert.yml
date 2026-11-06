@@ -1,0 +1,26 @@
+name: Emacs Lisp tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ert:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        emacs: ['27.2', '29.4', '31.1']
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Emacs
+        uses: purcell/setup-emacs@master
+        with:
+          version: ${{ matrix.emacs }}
+      - name: Byte-compile viewer.el
+        run: emacs -Q --batch -L . -f batch-byte-compile viewer.el
+      - name: Run ERT regressions
+        run: emacs -Q --batch -L . -l test/viewer-test.el -f ert-run-tests-batch-and-exit
