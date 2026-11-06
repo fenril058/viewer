@@ -184,5 +184,30 @@
     (view-mode -1)
     (should-not (local-variable-p 'emacs-lisp-mode-view-mode))))
 
+
+(ert-deftest viewer-test-one-time-installation-protects-explicit-view ()
+  "A direct, one-time setup must cover explicitly entered View mode."
+  (unwind-protect
+      (progn
+        (viewer-change-modeline-color-teardown)
+        (viewer-stay-in-teardown)
+        (viewer-change-modeline-color-setup)
+        (viewer-stay-in-setup)
+        (with-temp-buffer
+          (setq-local buffer-file-name "/tmp/viewer-unwritable.log")
+          (cl-letf (((symbol-function 'file-writable-p)
+                     (lambda (_file) nil)))
+            (view-mode 1)
+            (should (equal viewer--modeline-color
+                           viewer-modeline-color-unwritable))
+            (view-mode -1)
+            (should view-mode)
+            (let ((view-mode-force-exit t))
+              (view-mode -1))
+            (should-not view-mode)
+            (should-not viewer--modeline-cookie))))
+    (viewer-stay-in-teardown)
+    (viewer-change-modeline-color-teardown)))
+
 (provide 'viewer-test)
 ;;; viewer-test.el ends here
