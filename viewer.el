@@ -207,11 +207,7 @@ KEY-BINDINGS consists of (KEY . COMMAND) pairs using kbd notation."
 
 (defmacro define-overriding-view-mode-map (major-mode-symbol &rest key-bindings)
   "Define a View-mode keymap for MAJOR-MODE-SYMBOL.
-KEY-BINDINGS are (KEY . COMMAND) entries, e.g.
-
-  (define-overriding-view-mode-map emacs-lisp-mode
-    ("C-m" . find-function)
-    ("C-j" . find-variable))"
+KEY-BINDINGS are (KEY . COMMAND) pairs in kbd notation."
   (declare (indent 1))
   (let ((map-symbol (intern (format "%s-view-map" major-mode-symbol)))
         (mode-symbol (viewer--extension-variable major-mode-symbol)))
