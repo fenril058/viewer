@@ -194,5 +194,21 @@
   (should-not (fboundp 'viewer-aggressive-setup))
   (should-not (fboundp 'view-mode-by-default-setup)))
 
+
+(ert-deftest viewer-test-read-only-mode-uses-built-in-view ()
+  "Viewer follows View mode activated by Emacs's view-read-only option."
+  (let ((view-read-only t))
+    (unwind-protect
+        (progn
+          (viewer-change-modeline-color-setup)
+          (with-temp-buffer
+            (read-only-mode 1)
+            (should view-mode)
+            (should viewer--modeline-cookie)
+            (should (equal viewer--modeline-color viewer-modeline-color-view))
+            (view-mode -1)
+            (should-not viewer--modeline-cookie)))
+      (viewer-change-modeline-color-teardown))))
+
 (provide 'viewer-test)
 ;;; viewer-test.el ends here
