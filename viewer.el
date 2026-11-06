@@ -1,10 +1,11 @@
-;;; viewer.el --- View-mode extension
+;;; viewer.el --- View-mode extension -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2009,2014,2016  rubikitch
 
 ;; Author: rubikitch <rubikitch@ruby-lang.org>
 ;; Keywords: view, extensions
-;; URL: http://github.com/rubikitch/viewer/
+;; URL: https://github.com/rubikitch/viewer/
+;; Package-Requires: ((emacs "27.1"))
 
 ;; This file is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -168,189 +169,261 @@
 
 ;;; Code:
 
-(defvar viewer-version "$Id: viewer.el,v 1.13 2013/03/14 23:37:05 rubikitch Exp $")
 (require 'view)
-(eval-when-compile (require 'cl))
+(require 'face-remap)
 
-;;;; (@* "Overriding view-mode keymap")
-(defun define-overriding-view-mode-map-internal (mode-name key-bindings)
-  (let ((mapsym (intern (concat (symbol-name mode-name) "-view-map")))
-        (view-mode-sym (intern (concat (symbol-name mode-name) "-view-mode"))))
-    (eval `(defvar ,mapsym nil))
-    (eval `(defvar ,view-mode-sym nil))
-    (let ((map (make-sparse-keymap)))
-      (loop for (key . command) in key-bindings
-            do (define-key map (read-kbd-macro key) command))
-      (set mapsym map)
-      (setq minor-mode-map-alist
-          (cons (cons view-mode-sym map)
-                (delete (assq view-mode-sym minor-mode-map-alist) minor-mode-map-alist)))
-      nil)))
+(defgroup viewer nil
+  "Extensions for built-in View mode."
+  :group 'view
+  :prefix "viewer-")
 
-(defmacro define-overriding-view-mode-map (mode-name &rest key-bindings)
-  "Define major-mode specific view-mode keymap.
-Note that the car of an element of KEY-BINDINGS is `kbd' notation.
+(defconst viewer-version "1.14"
+  "Version of viewer.el.")
 
-For example, to define `view-mode' keys for `emacs-lisp-mode':
- (define-overriding-view-mode-map emacs-lisp-mode
-   (\"C-m\" . find-function)
-   (\"C-j\" . find-variable))
-"
-  `(define-overriding-view-mode-map-internal ',mode-name ',key-bindings))
+;;;; Major-mode-specific View keymaps
+
+(defun viewer--extension-variable (&optional major-mode-symbol)
+  "Return the View extension variable for MAJOR-MODE-SYMBOL.
+Use the current major mode if MAJOR-MODE-SYMBOL is nil."
+  (intern (format "%s-view-mode" (or major-mode-symbol major-mode))))
+
+(defun define-overriding-view-mode-map-internal (major-mode-symbol key-bindings)
+  "Install a View-mode keymap for MAJOR-MODE-SYMBOL.
+KEY-BINDINGS consists of (KEY . COMMAND) pairs using kbd notation."
+  (let* ((map-symbol (intern (format "%s-view-map" major-mode-symbol)))
+         (mode-symbol (viewer--extension-variable major-mode-symbol))
+         (map (make-sparse-keymap)))
+    (dolist (binding key-bindings)
+      (define-key map (kbd (car binding)) (cdr binding)))
+    (set map-symbol map)
+    (unless (boundp mode-symbol)
+      (set mode-symbol nil))
+    (setq minor-mode-map-alist
+          (cons (cons mode-symbol map)
+                (assq-delete-all mode-symbol minor-mode-map-alist)))
+    (when (and view-mode (eq major-mode major-mode-symbol))
+      (viewer-install-extension))
+    nil))
+
+(defmacro define-overriding-view-mode-map (major-mode-symbol &rest key-bindings)
+  "Define a View-mode keymap for MAJOR-MODE-SYMBOL.
+KEY-BINDINGS are (KEY . COMMAND) entries, e.g.
+
+  (define-overriding-view-mode-map emacs-lisp-mode
+    ("C-m" . find-function)
+    ("C-j" . find-variable))"
+  (declare (indent 1))
+  (let ((map-symbol (intern (format "%s-view-map" major-mode-symbol)))
+        (mode-symbol (viewer--extension-variable major-mode-symbol)))
+    (list 'progn
+          (list 'defvar map-symbol nil "View keymap for this major mode.")
+          (list 'defvar-local mode-symbol nil "View keymap active in this buffer.")
+          (list 'define-overriding-view-mode-map-internal
+                (list 'quote major-mode-symbol) (list 'quote key-bindings)))))
 
 (defun viewer-install-extension ()
-  (when view-mode
-    (set (make-local-variable (intern (concat (symbol-name major-mode) "-view-mode")))
-         t)))
-(add-hook 'view-mode-hook 'viewer-install-extension)
-(defun viewer-uninstall-extension ()
-  (kill-local-variable (intern (concat (symbol-name major-mode) "-view-mode"))))
-(defadvice view-mode-disable (before viewer activate)
-  (viewer-uninstall-extension))
-;;; [2014-10-22 Wed]Emacs 24.4
-(defadvice view--disable (before viewer activate)
-  (viewer-uninstall-extension))
+  "Enable a configured major-mode-specific View keymap in this buffer."
+  (let ((symbol (viewer--extension-variable)))
+    (when (and view-mode (assq symbol minor-mode-map-alist))
+      (set (make-local-variable symbol) t))))
 
-;;;; (@* "View-mode by default")
+(defun viewer-uninstall-extension ()
+  "Disable the current major-mode-specific View keymap."
+  (let ((symbol (viewer--extension-variable)))
+    (when (local-variable-p symbol)
+      (kill-local-variable symbol))))
+
+(defun viewer--sync-extension ()
+  "Synchronize the major-mode extension with View-mode state."
+  (if view-mode
+      (viewer-install-extension)
+    (viewer-uninstall-extension)))
+
+(add-hook 'view-mode-hook #'viewer--sync-extension)
+
+;;;; View mode by filename
+
 (defcustom view-mode-by-default-regexp nil
-  "*Regexp of file name to open by `view-mode'."
-  :type 'string
+  "Regexp matching filenames to enter View mode on visiting.
+Nil disables this feature."
+  :type '(choice (const :tag "Disabled" nil) regexp)
   :group 'viewer)
 
 (defun view-mode-by-default-setup ()
+  "Enable View mode when the filename matches `view-mode-by-default-regexp`."
   (when (and buffer-file-name view-mode-by-default-regexp
-             (string-match view-mode-by-default-regexp buffer-file-name))
+             (string-match-p view-mode-by-default-regexp buffer-file-name))
     (view-mode 1)
     (message "view-mode by view-mode-by-default-regexp.")))
-(add-hook 'find-file-hook 'view-mode-by-default-setup)
 
-;;;; (@* "Aggressive view-mode")
-(defgroup viewer nil
-  "View-mode extensions"
-  :group 'view)
+;; Retain the original, lightweight, file-visiting hook.
+(add-hook 'find-file-hook #'view-mode-by-default-setup)
+
+;;;; Aggressive View mode (optional)
 
 (defcustom viewer-aggressive-minimum-size 100
-  "*Minimum file size to enable aggressive view-mode."
+  "Minimum buffer size to enable aggressive View mode."
   :type 'integer
   :group 'viewer)
 
 (defcustom viewer-aggressive-writable t
-  "*When non-nil, aggressive view-mode buffer is writable."
+  "Non-nil keeps writable files editable in aggressive View mode.
+Unwritable files are always read-only."
   :type 'boolean
   :group 'viewer)
-(defadvice find-file-noselect (after switch-to-view-file)
-  (when (bufferp ad-return-value)
-    (with-current-buffer ad-return-value
-      (aggressive-view-mode))))
 
 (defun aggressive-view-mode ()
+  "Enable View mode for sufficiently large regular files."
   (when (and buffer-file-name
              (> (buffer-size) viewer-aggressive-minimum-size)
              (file-regular-p buffer-file-name))
-        (view-mode 1)
-        (setq buffer-read-only (not (file-writable-p buffer-file-name)))))
+    (view-mode 1)
+    (setq buffer-read-only
+          (or (not viewer-aggressive-writable)
+              (not (file-writable-p buffer-file-name))))))
 
-;; (describe-function 'find-file-noselect)
-;; (memq 'aggressive-view-mode find-file-hook)
+(defun viewer--aggressive-after-find-file (buffer)
+  "Apply aggressive View mode to BUFFER and return BUFFER unchanged."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (aggressive-view-mode)))
+  buffer)
 
-;; (viewer-aggressive-setup nil)
-;; (viewer-aggressive-setup t)
-;; (viewer-aggressive-setup 'force)
 (defun viewer-aggressive-setup (arg)
-  "Setup aggressive `view-mode'.
-
-When ARG is t, all new files are opened by `view-mode'.
-When ARG is 'force, enable `view-mode' even if file buffer is selected.
-When ARG is nil, uninstall it."
-  (case arg
+  "Enable or disable aggressive View mode according to ARG.
+If ARG is t, use `find-file-hook`.  If ARG is `force`, also
+visit already-open buffers using advice on `find-file-noselect`.
+If ARG is nil, remove both mechanisms."
+  (remove-hook 'find-file-hook #'aggressive-view-mode)
+  (advice-remove 'find-file-noselect #'viewer--aggressive-after-find-file)
+  (pcase arg
     ('force
-     (remove-hook 'find-file-hook 'aggressive-view-mode)
-     (ad-enable-advice 'find-file-noselect 'after 'switch-to-view-file)
-     (ad-update 'find-file-noselect))
-    (nil
-     (remove-hook 'find-file-hook 'aggressive-view-mode)
-     (ad-disable-advice 'find-file-noselect 'after 'switch-to-view-file)
-     (ad-update 'find-file-noselect))
-    (t
-     (add-hook 'find-file-hook 'aggressive-view-mode)
-     (ad-disable-advice 'find-file-noselect 'after 'switch-to-view-file)
-     (ad-update 'find-file-noselect))))
+     (advice-add 'find-file-noselect :filter-return
+                 #'viewer--aggressive-after-find-file))
+    ('nil nil)
+    (_ (add-hook 'find-file-hook #'aggressive-view-mode))))
 
-;;;; (@* "Stay in view-mode")
-(defvar view-mode-force-exit nil)
-(defmacro viewer-stay-in-unless-writable-advice (f)
-  `(defadvice ,f (around viewer-stay-in-unless-writable activate)
-     (if (or view-mode-force-exit
-             (and (boundp 'edebug-active) edebug-active)
-             (not (and view-mode
-                       (buffer-file-name)
-                       (not (file-writable-p (buffer-file-name))))))
-         ad-do-it
-       (message "File is unwritable, so stay in view-mode."))))
+;;;; Stay in View mode for unwritable files (optional)
+
+(defvar view-mode-force-exit nil
+  "Non-nil permits an explicit exit from View mode.")
+
+(defun viewer--stay-in-unwritable-p ()
+  "Return non-nil if leaving View mode should be prevented."
+  (and view-mode buffer-file-name
+       (not (file-writable-p buffer-file-name))
+       (not view-mode-force-exit)
+       (not (bound-and-true-p edebug-active))))
+
+(defun viewer--guard-view-mode (original &rest args)
+  "Call ORIGINAL with ARGS unless it would disable protected View mode."
+  (let ((arg (car args)))
+    (if (and (viewer--stay-in-unwritable-p)
+             (or (null arg) (eq arg 'toggle)
+                 (and (numberp arg) (<= arg 0))))
+        (message "File is unwritable, so stay in view-mode.")
+      (apply original args))))
+
+(defun viewer--guard-view-mode-exit (original &rest args)
+  "Call ORIGINAL with ARGS unless View mode must remain enabled."
+  (if (viewer--stay-in-unwritable-p)
+      (message "File is unwritable, so stay in view-mode.")
+    (apply original args)))
 
 (defun view-mode-force-exit ()
+  "Explicitly leave View mode even when the file is unwritable."
   (interactive)
-  (let ((view-mode-force-exit t)) (view-mode-exit)))
+  (let ((view-mode-force-exit t))
+    (view-mode-exit)))
 
 (defun viewer-stay-in-setup ()
-  "Setup stay-in view-mode.
-Stay in `view-mode' when the file is unwritable."
-  (viewer-stay-in-unless-writable-advice view-mode)
-  (viewer-stay-in-unless-writable-advice view-mode-exit)
-  (viewer-stay-in-unless-writable-advice view-mode-disable))
+  "Install protection against exiting View mode on unwritable files.
+Setup is idempotent.  This feature remains opt-in."
+  (unless (advice-member-p #'viewer--guard-view-mode 'view-mode)
+    (advice-add 'view-mode :around #'viewer--guard-view-mode))
+  (unless (advice-member-p #'viewer--guard-view-mode-exit 'view-mode-exit)
+    (advice-add 'view-mode-exit :around #'viewer--guard-view-mode-exit)))
 
-;;;; (@* "Change mode-line color")
-(defvar viewer-modeline-color-default (face-background 'mode-line))
+(defun viewer-stay-in-teardown ()
+  "Remove protection installed by `viewer-stay-in-setup`."
+  (advice-remove 'view-mode #'viewer--guard-view-mode)
+  (advice-remove 'view-mode-exit #'viewer--guard-view-mode-exit))
+
+;;;; Buffer-local mode-line coloring (optional)
+
+(defvar viewer-modeline-color-default (face-background 'mode-line nil t)
+  "Original global background, retained for compatibility.
+Viewer now uses buffer-local face remapping instead of writing it.")
+
 (defcustom viewer-modeline-color-unwritable "tomato"
-  "*Modeline color when file is not writable."
-  :type 'string
+  "Active mode-line background in View mode when the file is unwritable."
+  :type 'color
   :group 'viewer)
+
 (defcustom viewer-modeline-color-view "orange"
-  "*Modeline color for `view-mode'."
-  :type 'string
+  "Active mode-line background in View mode."
+  :type 'color
   :group 'viewer)
+
+(defvar-local viewer--modeline-cookie nil
+  "Cookie for viewer's local mode-line face remapping.")
+
+(defvar-local viewer--modeline-color nil
+  "Last mode-line background chosen in this buffer.")
+
+(defun viewer--desired-modeline-color ()
+  "Return the desired mode-line background color, or nil."
+  (when view-mode
+    (if (and buffer-file-name
+             (not (file-writable-p buffer-file-name)))
+        viewer-modeline-color-unwritable
+      viewer-modeline-color-view)))
 
 (defun viewer-change-modeline-color ()
+  "Update this buffer's active mode-line background.
+Use buffer-local remapping of `mode-line-active` (or `mode-line`
+on Emacs prior to 29) instead of changing the global face.
+Removing the remapping restores the current theme."
   (interactive)
-  (when (eq (selected-window)
-            (get-buffer-window (current-buffer)))
-    (set-face-background
-     'mode-line
-     (cond ((and buffer-file-name view-mode
-                 (not (file-writable-p buffer-file-name)))
-            viewer-modeline-color-unwritable)
-           (view-mode
-            viewer-modeline-color-view)
-           (t
-            viewer-modeline-color-default)))
-    ;; (force-mode-line-update)
-    ))
+  (let ((color (viewer--desired-modeline-color)))
+    (unless (equal color viewer--modeline-color)
+      (when viewer--modeline-cookie
+        (face-remap-remove-relative viewer--modeline-cookie))
+      (setq viewer--modeline-cookie nil
+            viewer--modeline-color color)
+      (when color
+        (setq viewer--modeline-cookie
+              (face-remap-add-relative
+               (if (facep 'mode-line-active) 'mode-line-active 'mode-line)
+               :background color)))
+      (force-mode-line-update))))
 
-(defmacro viewer-change-modeline-color-advice (f)
-  `(defadvice ,f (after change-mode-line-color activate)
-     (viewer-change-modeline-color)))
+(defun viewer--on-view-mode ()
+  "Enable mode-line updates locally while View mode is active."
+  (if view-mode
+      (add-hook 'post-command-hook #'viewer-change-modeline-color nil t)
+    (remove-hook 'post-command-hook #'viewer-change-modeline-color t))
+  (viewer-change-modeline-color))
 
 (defun viewer-change-modeline-color-setup ()
-  "Setup coloring modeline.
-See also `viewer-modeline-color-unwritable' and `viewer-modeline-color-view'."
-  (add-hook 'post-command-hook 'viewer-change-modeline-color))
+  "Install View-mode mode-line coloring, without affecting other buffers.
+This may be called at initialization or from `view-mode-hook`.
+Re-running it does not install duplicate hooks."
+  (add-hook 'view-mode-hook #'viewer--on-view-mode)
+  ;; If called from a running View-mode hook, apply the color immediately.
+  (viewer--on-view-mode))
 
-(defun viewer-change-modeline-color-setup--old ()
-  "Setup coloring modeline.
-See also `viewer-modeline-color-unwritable' and `viewer-modeline-color-view'."
-  (add-hook 'window-configuration-change-hook 'viewer-change-modeline-color)
-  (viewer-change-modeline-color-advice toggle-read-only)
-  (viewer-change-modeline-color-advice view-mode-enable)
-  (viewer-change-modeline-color-advice view-mode-disable)
-  (viewer-change-modeline-color-advice other-window)
-  (defadvice select-window (around change-modeline-color activate)
-    (let ((curwin (selected-window))
-          (destwin (ad-get-arg 0)))
-      ad-do-it
-      (unless (or (called-interactively-p 'any) (eq curwin destwin))
-        (viewer-change-modeline-color))))
-  (viewer-change-modeline-color-advice select-frame)
-  nil)
+(defun viewer-change-modeline-color-teardown ()
+  "Remove View-mode mode-line coloring and restore theme faces."
+  (remove-hook 'view-mode-hook #'viewer--on-view-mode)
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (remove-hook 'post-command-hook #'viewer-change-modeline-color t)
+      (when viewer--modeline-cookie
+        (face-remap-remove-relative viewer--modeline-cookie))
+      (setq viewer--modeline-cookie nil
+            viewer--modeline-color nil)
+      (force-mode-line-update))))
 
 ;;;; Bug report
 (defvar viewer-maintainer-mail-address
@@ -369,6 +442,7 @@ How to send a bug report:
 # If you are a Japanese, please write in Japanese:-)")
 (defun viewer-send-bug-report ()
   (interactive)
+  (require 'reporter)
   (reporter-submit-bug-report
    viewer-maintainer-mail-address
    "viewer.el"
